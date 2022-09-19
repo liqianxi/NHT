@@ -78,8 +78,16 @@ def kl_divergence(mu, sigma, target_sigma=1.0):
     # KLD = 0.5*tf.math.reduce_sum(log_target_var - log_var, axis=1) + 1/(2*target_var)*tf.math.reduce_sum(var - target_var + tf.math.pow(mu,2), axis=1)
 
     return tf.math.reduce_mean(KLD)
-    
-def get_cond_inp(sample, out_dim, goal_cond):
+
+
+def get_cond_inp(sample, out_dim, goal_cond, legacy=False):
+  if legacy == True:
+    return legacy_get_cond_inp(sample, out_dim, goal_cond)
+  else:
+    return new_get_cond_inp(sample, goal_cond)
+
+# Legacy implementation for NHT CoRL initial submission
+def legacy_get_cond_inp(sample, out_dim, goal_cond):
     
     if goal_cond:
         cond_inp = tf.cast(tf.concat((sample['target'],sample['x'],sample['q']),1),dtype=tf.float32)
@@ -95,6 +103,37 @@ def get_cond_inp(sample, out_dim, goal_cond):
         cond_inp = cond_inp+noise
 
     return cond_inp
+
+def new_get_cond_inp(sample, goal_cond):
+    
+    if goal_cond:
+        cond_inp = tf.cast(tf.concat((sample['target'],sample['x'],sample['q']),1),dtype=tf.float32)
+    else:
+        q = sample['q']
+        
+        #noise = tf.random.normal(shape=q.shape,mean=0.0,stddev=0.05,dtype=tf.float32)
+        noise = tf.zeros_like(q, dtype=tf.float32)
+        cond_inp = tf.cast(q, dtype=tf.float32)
+        cond_inp = cond_inp+noise
+
+    return cond_inp
+
+# def get_cond_inp(sample, out_dim, goal_cond):
+    
+#     if goal_cond:
+#         cond_inp = tf.cast(tf.concat((sample['target'],sample['x'],sample['q']),1),dtype=tf.float32)
+#     else:
+#         q = sample['q']
+        
+#         q = q[:,:out_dim]
+        
+#         noise = tf.random.normal((1,10),mean=0.0,stddev=0.05,dtype=tf.float32)
+#         #noise = tf.random.normal((1,10),mean=0.0,stddev=0.01,dtype=tf.float32)
+        
+#         cond_inp = tf.cast(tf.concat((sample['x'],q),1),dtype=tf.float32)
+#         cond_inp = cond_inp+noise
+
+#     return cond_inp
 
 def weight_proj(W, lam):
   scale_factor = 1/tf.stop_gradient(tf.math.maximum(1,tf.norm(W,ord=2)/lam)) # from Gouk et al Reg of NN by Enforcing Lipschitz Continuity
