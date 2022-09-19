@@ -17,7 +17,10 @@ class MLP(tf.keras.Model):
 
     def call(self, x):
         return self.net(x)
-
+        
+    def freeze(self):
+        for layer in self.net.layers:
+            layer.trainable = False
     
 
 if __name__ == '__main__':

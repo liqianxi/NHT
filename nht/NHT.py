@@ -43,6 +43,11 @@ class NHT(keras.Model):
         self.train_loss = tf.contrib.eager.metrics.Mean(name='train_recon_loss')
         self.val_loss = tf.contrib.eager.metrics.Mean(name='val_recon_loss')
     
+    def freeze_model(self):
+        for layer in self.h.net.layers:
+            layer.get_config()
+            layer.trainable = False
+        self.h.freeze()
 
     def _exp_map(self,H):
         epsilon = 1e-6
@@ -53,26 +58,19 @@ class NHT(keras.Model):
         zero_I = tf.concat((zero_row, I), axis=0) # n x n-1
 
         v_mat = tf.matmul(zero_I, H)                  # batch x n x k
-        #print('v_mat', v_mat)
         v_norm_vec = tf.linalg.norm(v_mat,axis=1)     # batch x k
-        #print('v_norm_vec', v_norm_vec)
         v_norm_row_vec = tf.expand_dims(v_norm_vec,1) # batch x 1 x k
-        #print('v_norm_row_vec', v_norm_row_vec)
         v_norm_diag = tf.linalg.diag(v_norm_vec)      # batch x k x k
         inv_v_norm_diag = tf.linalg.diag(1/(v_norm_vec+epsilon))
         sin_over_norm = tf.linalg.matmul(tf.math.sin(v_norm_diag),inv_v_norm_diag) # batch x k x k
-        #print('sin_over_norm', sin_over_norm)
 
         e1 = tf.eye(n_minus_1+1,1) # n x 1
-        #print(e1.shape)
+        
         cos_term = tf.linalg.matmul(e1, tf.math.cos(v_norm_row_vec))
         sin_term = tf.linalg.matmul(v_mat, sin_over_norm)
         
         exp_mapped_vs = cos_term+sin_term
-        #print(exp_mapped_vs.shape)
-        #print('zI',zero_I.shape)
-        #print(tf.linalg.norm(exp_mapped_vs,axis=1))
-        #input('wait')
+        
         return exp_mapped_vs
         
 
@@ -81,26 +79,26 @@ class NHT(keras.Model):
         # Note, we assume the columns of H already have unit length, 
         # thanks to the exponential map to the unit sphere
         k = H.shape[-1] # number of vectors from which to construct reflections
-        H_bar = tf.eye(int(H.shape[-2]))
+        Q = tf.eye(int(H.shape[-2]))
         I = tf.eye(int(H.shape[-2]))
         
         for c in range(k):
             v = tf.expand_dims(H[:,:,c],-1) # batch x n x 1
             vT = tf.transpose(v,(0,2,1))    # batch x 1 x n
             vvT = tf.matmul(v,vT)           # batch x n x n
-            H_i =  I - 2*vvT                 # batch x n x n
-            H_bar = tf.matmul(H_bar, H_i)            # batch x n x n
+            H_i =  I - 2*vvT                # batch x n x n
+            Q = tf.matmul(Q, H_i)   # batch x n x n
 
-        return H_bar[:,:,:k] # H_hat
+        return Q[:,:,:k] # H_hat
 
 
     def _get_map(self, inputs):
         x = self.h(inputs)
         v_bar = tf.reshape(x, [-1, self.output_dim-1, self.action_dim])
         v_hat_bar = self._exp_map(v_bar)
-        H_hat = self._householder(v_hat_bar)
+        Q = self._householder(v_hat_bar)
         
-        return H_hat
+        return Q
     
     def _get_best_action(self, SCL_map, low_level_action):
         SCL_map_pinv = tf.transpose(SCL_map,perm=[0,2,1]) # assumes SCL_map is orthonormal
@@ -134,31 +132,6 @@ class NHT(keras.Model):
 
         self.val_loss(loss)
 
-    def input_rot_train_step(self, cond_inp, J_0, H_hat_0):
-        # train step for optimization of constant input rotation
-        # J_0 and H_hat_0 should be the Jacobian and H_hat corresponding to the start state of the task
-        e_1_pose_T = tf.eye(1,6) 
-        e_1_action = tf.eye(self.action_dim,1)
-
-        # for layer in self.h.net.layers:
-        #     print(layer.get_config())
-        with tf.GradientTape() as tape:
-            Q = tf.squeeze(self._get_map(cond_inp))
-            rotated_action = tf.matmul(Q, e_1_action)
-            q_vel = tf.matmul(H_hat_0, rotated_action)
-            x_vel = tf.matmul(J_0, q_vel)
-            x1_vel = tf.matmul(e_1_pose_T, x_vel)
-            loss = tf.math.reduce_mean(-1*x1_vel)
-        
-        gradients = tape.gradient(loss, self.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-        
-        if self.L is not None: # Lipschitz Regularization
-            #project_weights(self.f, self.L)
-            project_weights(self.h, self.L)
-        
-        self.train_loss(loss)
-    
 
     def predict_action(self, low_level_action, cond_inp):
         return self.f(tf.concat((low_level_action, cond_inp),axis=-1))
@@ -175,12 +148,5 @@ class NHT(keras.Model):
 
         return q_dot_hat
 
-    def test_orthonormality(self, SCL_map):
-        print(tf.norm(SCL_map,axis=1))
-        print(SCL_map[0,:,0].shape)
-        print(tf.tensordot(SCL_map[0,:,0],SCL_map[0,:,1],axes=1))
-        #print(tf.tensordot(SCL_map[0,:,0],SCL_map[0,:,2],axes=1))
-        #print(tf.tensordot(SCL_map[0,:,1],SCL_map[0,:,2],axes=1))
-        #print(tf.tensordot(SCL_map[0,:,1],SCL_map[0,:,3],axes=1))
 
 

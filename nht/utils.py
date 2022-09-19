@@ -56,7 +56,15 @@ def common_arg_parser():
   parser.add_argument('--batch_size', type=int, default=256)
   parser.add_argument('--hidden_layers', type=int, default=2)
   parser.add_argument('--activation', type=str, default='tanh')
+
+  parser.add_argument('--run_name', type=str, default='default')
+  parser.add_argument('--legacy', action='store_true', default=False)
+
+  parser.add_argument('--sweep', action='store_true', default=False)
   
+  parser.add_argument('--u_dim', type=int, default=7)
+  parser.add_argument('--o_dim', type=int, default=10)
+
   return parser
 
 

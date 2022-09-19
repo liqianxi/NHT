@@ -21,7 +21,7 @@ import os
 print("TensorFlow version:", tf.__version__)
 tf.enable_eager_execution()
 
-from expNHT import SCL
+from nht.NHT import SCL
 import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
