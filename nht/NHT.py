@@ -24,7 +24,7 @@ from nht.MLP import MLP
 
 
 class NHT(keras.Model):
-    def __init__(self, action_dim, output_dim, cond_dim, lip_coeff=1, step_size = 0.0001, hiddens=[256,256], activation='tanh', action_pred=False):
+    def __init__(self, action_dim, output_dim, cond_dim, lip_coeff=1, step_size = 0.0001, hiddens=[256,256], activation='tanh', use_exp=True, action_pred=False):
         super(NHT, self).__init__()
 
         self.L = lip_coeff
@@ -33,8 +33,13 @@ class NHT(keras.Model):
 
         self.action_dim = action_dim
         self.output_dim = output_dim
-
-        self.h = MLP(cond_dim, hiddens, action_dim*(output_dim-1), activation)
+        self.use_exp = use_exp
+        
+        if self.use_exp:
+            self.h = MLP(cond_dim, hiddens, action_dim*(output_dim-1), activation)
+        else:
+            self.h = MLP(cond_dim, hiddens, action_dim*output_dim, activation)
+            
         if action_pred:
             self.f = MLP(output_dim+cond_dim,hiddens,action_dim, activation) # encoder, predicts low dim action given state and high dim action
 
@@ -94,8 +99,12 @@ class NHT(keras.Model):
 
     def _get_map(self, inputs):
         x = self.h(inputs)
-        v_bar = tf.reshape(x, [-1, self.output_dim-1, self.action_dim])
-        v_hat_bar = self._exp_map(v_bar)
+        if self.use_exp:
+            v_bar = tf.reshape(x, [-1, self.output_dim-1, self.action_dim])
+            v_hat_bar = self._exp_map(v_bar)
+        else:
+            v_hat_bar = tf.reshape(x, [-1, self.output_dim, self.action_dim])
+            
         Q = self._householder(v_hat_bar)
         
         return Q

@@ -37,6 +37,8 @@ def main(args):
     u_dim = args.u_dim
     o_dim = args.o_dim
 
+    print(f'Using exponential map: {args.use_exp}')
+
     # Set hyperparameters
     if args.override_params is not None:   # here hyperparameters are read from an override_params file
         with open(args.override_params,'r') as f:
@@ -49,7 +51,7 @@ def main(args):
         hiddens = [override_params['units']]*override_params['hidden_layers']
         activation = override_params['activation']
         batch_size = override_params['batch_size']
-        g = NHT(action_dim=args.action_dim, output_dim=u_dim, cond_dim=o_dim, step_size = alpha, lip_coeff = L, hiddens=hiddens, activation=activation)
+        g = NHT(action_dim=args.action_dim, output_dim=u_dim, cond_dim=o_dim, step_size = alpha, lip_coeff = L, hiddens=hiddens, activation=activation, use_exp=args.use_exp)
 
     else: # hyperparameters from command line args
         alpha = args.alpha
@@ -59,7 +61,7 @@ def main(args):
         hidden_layers = args.hidden_layers
         activation = args.activation
         hiddens = [units]*hidden_layers
-        g = NHT(action_dim=args.action_dim, output_dim=u_dim, cond_dim=o_dim, step_size = alpha, lip_coeff = L, hiddens=hiddens, activation=activation)
+        g = NHT(action_dim=args.action_dim, output_dim=u_dim, cond_dim=o_dim, step_size = alpha, lip_coeff = L, hiddens=hiddens, activation=activation, use_exp=args.use_exp)
 
     
     # get datasets
@@ -130,7 +132,7 @@ def main(args):
             print('\nerror norm\n', tf.norm(error, axis=1))
 
 
-        loaded_NHT = NHT(action_dim=args.action_dim, output_dim=u_dim, cond_dim=o_dim, lip_coeff=args.lip_coeff, action_pred=args.action_pred)
+        loaded_NHT = NHT(action_dim=args.action_dim, output_dim=u_dim, cond_dim=o_dim, lip_coeff=args.lip_coeff, action_pred=args.action_pred, use_exp=args.use_exp)
         loaded_h = keras.models.load_model(f'{model_dir}/{model_name}')
         loaded_NHT.h = loaded_h
         

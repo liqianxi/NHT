@@ -61,6 +61,7 @@ def common_arg_parser():
   parser.add_argument('--legacy', action='store_true', default=False)
 
   parser.add_argument('--sweep', action='store_true', default=False)
+  parser.add_argument('--use_exp', default= True, type= lambda x: bool(int(x)))
   
   parser.add_argument('--u_dim', type=int, default=7)
   parser.add_argument('--o_dim', type=int, default=10)
