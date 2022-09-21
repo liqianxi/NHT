@@ -35,6 +35,12 @@ class NHT(keras.Model):
         self.output_dim = output_dim
         self.use_exp = use_exp
         
+        # correct for 2*sqrt(k) Lipschitz coefficient of Householder tranform
+        k = self.action_dim
+        layers = len(hiddens) + 1
+        self.L_NN = self.L/(2*np.sqrt(k))
+        self.L_layer = np.power(self.L_NN, 1/layers)
+
         if self.use_exp:
             self.h = MLP(cond_dim, hiddens, action_dim*(output_dim-1), activation)
         else:
@@ -129,7 +135,7 @@ class NHT(keras.Model):
         
         if self.L is not None: # Lipschitz Regularization
             #project_weights(self.f, self.L)
-            project_weights(self.h, self.L)
+            project_weights(self.h, self.L_layer)
         
         self.train_loss(loss)
 
