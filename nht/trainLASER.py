@@ -5,7 +5,7 @@ import os
 print("TensorFlow version:", tf.__version__)
 tf.enable_eager_execution()
 
-from scl.LASER import LASER
+from nht.LASER import LASER
 import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -18,11 +18,11 @@ from tensorflow.keras import Model
 from tensorflow import keras
 from tensorflow.keras import layers
 import numpy as np
-from scl.utils import get_cond_inp, get_dsets, config_loggers, get_model_dir
+from nht.utils import get_cond_inp, get_dsets, config_loggers, get_model_dir
 
 import json
 import tensorflow as tf
-from scl.utils import common_arg_parser
+from nht.utils import common_arg_parser
 from pathlib import Path
 
 from tensorflow.python.ops import summary_ops_v2
@@ -33,9 +33,10 @@ import datetime
 def get_s_p(sample):
     
     q_p = sample['q_p']
-    x_p = sample['x_p']
+    #x_p = sample['x_p']
     
-    return tf.cast(tf.concat((x_p,q_p),1),dtype=tf.float32)
+    #return tf.cast(tf.concat((x_p,q_p),1),dtype=tf.float32)
+    return tf.cast(q_p,dtype=tf.float32)
 
 def write_training_progress_to_logs(train_summary_writer, g, epoch):
     with train_summary_writer.as_default(), summary_ops_v2.always_record_summaries():
@@ -54,8 +55,11 @@ def write_val_progress_to_logs(test_summary_writer, g, epoch):
 def main(args):
 
     tf.compat.v1.set_random_seed(args.seed)
+
+    out_dim = args.u_dim
+    cond_dim = args.o_dim
     latent_dim = args.action_dim
-    out_dim = 7
+
     if args.override_params is not None:
         with open(args.override_params,'r') as f:
             override_params = json.load(f)
@@ -68,11 +72,11 @@ def main(args):
         activation = override_params['activation']
         batch_size = override_params['batch_size']
         beta_dyn = override_params['beta_dyn']
-        g = LASER(input_dim=out_dim, latent_dim=latent_dim, cond_dim=10, step_size = alpha, beta = beta, beta_dyn = beta_dyn, hiddens=hiddens, activation=activation, check_norms=args.check_norms)
+        g = LASER(input_dim=out_dim, latent_dim=latent_dim, cond_dim=cond_dim, step_size = alpha, beta = beta, beta_dyn = beta_dyn, hiddens=hiddens, activation=activation, check_norms=args.check_norms)
 
     else:
         batch_size = 256
-        g = LASER(input_dim=out_dim, latent_dim=latent_dim, cond_dim=10, step_size = args.alpha, beta = args.reg, check_norms=args.check_norms)
+        g = LASER(input_dim=out_dim, latent_dim=latent_dim, cond_dim=cond_dim, step_size = args.alpha, beta = args.reg, check_norms=args.check_norms)
     
     #g = LASER(input_dim=out_dim, latent_dim=latent_dim, cond_dim=10, lip_coeff=None, hiddens=[64,64])
 
@@ -139,7 +143,7 @@ def main(args):
         for sample in val_ds.take(1):
             
             q = sample['q']
-            cond_inp = tf.cast(tf.concat((sample['x'],q),1),dtype=tf.float32)
+            cond_inp = tf.cast(q,dtype=tf.float32)
             qdot = sample['q_dot']
             qdot = tf.cast(qdot,dtype=tf.float32)
 

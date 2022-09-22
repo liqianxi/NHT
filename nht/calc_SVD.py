@@ -1,5 +1,5 @@
 import json
-from scl.utils import common_arg_parser, get_local_model_dir
+from nht.utils import common_arg_parser, get_local_model_dir
 from pathlib import Path
 import numpy as np
 import dask.array as da

@@ -18,8 +18,8 @@ import copy
 import json
 import tensorflow as tf
 
-from scl.MLP import MLP
-from scl.utils import kl_divergence
+from nht.MLP import MLP
+from nht.utils import kl_divergence
 
 class LASER(keras.Model):
     def __init__(self, input_dim, latent_dim, cond_dim, 
@@ -55,6 +55,12 @@ class LASER(keras.Model):
         self.val_kl_loss = tf.contrib.eager.metrics.Mean(name='val_kl_loss')
         self.train_loss = tf.contrib.eager.metrics.Mean(name='train_loss')
         self.val_loss = tf.contrib.eager.metrics.Mean(name='val_loss')
+
+    def freeze_model(self):
+        for layer in self.decoder.net.layers:
+            layer.get_config()
+            layer.trainable = False
+        self.decoder.freeze()
 
     def encode(self, cond_inp, recon_inp):
         x = tf.concat((recon_inp, cond_inp),axis=-1)

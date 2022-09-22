@@ -18,8 +18,8 @@ import copy
 import json
 import tensorflow as tf
 
-from scl.MLP import MLP
-from scl.utils import kl_divergence
+from nht.MLP import MLP
+from nht.utils import kl_divergence
 
 
 class CVAE(keras.Model):

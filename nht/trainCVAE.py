@@ -5,7 +5,7 @@ import os
 print("TensorFlow version:", tf.__version__)
 tf.enable_eager_execution()
 
-from scl.CVAE import CVAE
+from nht.CVAE import CVAE
 import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -18,11 +18,11 @@ from tensorflow.keras import Model
 from tensorflow import keras
 from tensorflow.keras import layers
 import numpy as np
-from scl.utils import get_cond_inp, get_dsets, config_loggers, get_model_dir, get_sci_str, get_reg_str
+from nht.utils import get_cond_inp, get_dsets, config_loggers, get_model_dir, get_sci_str, get_reg_str
 
 import json
 import tensorflow as tf
-from scl.utils import common_arg_parser
+from nht.utils import common_arg_parser
 from pathlib import Path
 
 from tensorflow.python.ops import summary_ops_v2

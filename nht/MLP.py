@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras import layers
-from scl.utils import common_arg_parser
+from nht.utils import common_arg_parser
 
 
 class MLP(tf.keras.Model):

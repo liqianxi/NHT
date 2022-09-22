@@ -2,7 +2,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 import tensorflow as tf
 tf.enable_eager_execution()
-from scl.utils import common_arg_parser
+from nht.utils import common_arg_parser
 from pathlib import Path
 import numpy as np
 import json
