@@ -106,6 +106,7 @@ def main(args):
     model_dir = get_model_dir(args)
     
     model_name = 'NHT'
+    print(f'saving model to {model_dir}/{model_name}')
     g.h.net.save(f'{model_dir}/{model_name}')
 
     # to test if we get consistent results after loading model

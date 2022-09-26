@@ -5,7 +5,7 @@ import os
 print("TensorFlow version:", tf.__version__)
 tf.enable_eager_execution()
 
-from scl.SCL_householder import SCL
+from nht.SCL import SCL
 import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -16,10 +16,10 @@ import numpy as np
 import json
 import tensorflow as tf
 from tensorflow import keras
-from scl.utils import common_arg_parser
+from nht.utils import common_arg_parser
 from tensorflow.python.ops import summary_ops_v2
 
-from scl.utils import get_cond_inp, get_dsets, config_loggers, get_model_dir
+from nht.utils import get_cond_inp, get_dsets, config_loggers, get_model_dir
 
 
 
@@ -34,23 +34,33 @@ def write_val_progress_to_logs(test_summary_writer, g, epoch):
 def main(args):
 
     tf.compat.v1.set_random_seed(args.seed)
-    out_dim = 7
-    cond_dim = 10
-    if args.override_params is not None:
+    u_dim = args.u_dim
+    o_dim = args.o_dim
+
+
+    # Set hyperparameters
+    if args.override_params is not None:   # here hyperparameters are read from an override_params file
         with open(args.override_params,'r') as f:
             override_params = json.load(f)
 
         print('read param json file')
+        print(override_params)
         alpha = override_params['alpha']
         L = override_params['L']
         hiddens = [override_params['units']]*override_params['hidden_layers']
         activation = override_params['activation']
         batch_size = override_params['batch_size']
-        g = SCL(action_dim=args.action_dim, output_dim=out_dim, cond_dim=cond_dim, step_size = alpha, lip_coeff = L, hiddens=hiddens, activation=activation)
+        g = SCL(action_dim=args.action_dim, output_dim=u_dim, cond_dim=o_dim, step_size = alpha, lip_coeff = L, hiddens=hiddens, activation=activation)
 
-    else:
-        batch_size = 2
-        g = SCL(action_dim=args.action_dim, output_dim=out_dim, cond_dim=cond_dim)
+    else: # hyperparameters from command line args
+        alpha = args.alpha
+        L = args.lip_coeff
+        units = args.units
+        batch_size = args.batch_size
+        hidden_layers = args.hidden_layers
+        activation = args.activation
+        hiddens = [units]*hidden_layers
+        g = SCL(action_dim=args.action_dim, output_dim=u_dim, cond_dim=o_dim, step_size = alpha, lip_coeff = L, hiddens=hiddens, activation=activation)
 
     
     # get datasets
@@ -66,22 +76,20 @@ def main(args):
         # train
         for sample in train_ds:
             
-            cond_inp = get_cond_inp(sample, out_dim, args.goal_cond)
-            qdot = sample['q_dot']
-            qdot = tf.cast(qdot,dtype=tf.float32)
+            o = get_cond_inp(sample, u_dim, args.goal_cond, args.legacy)       # observation
+            u = tf.cast(sample['q_dot'],dtype=tf.float32)  # actuation
 
-            g.train_step(cond_inp, qdot)
+            g.train_step(o, u)  # approximates actuation subspace given observation
             
         # log training progress
         write_training_progress_to_logs(train_summary_writer, g, epoch)
             
         # evaluate
         for sample in val_ds:
-            cond_inp = get_cond_inp(sample, out_dim, args.goal_cond)
-            qdot = sample['q_dot']
-            qdot = tf.cast(qdot,dtype=tf.float32)
+            o = get_cond_inp(sample, u_dim, args.goal_cond, args.legacy)
+            u = tf.cast(sample['q_dot'],dtype=tf.float32)
 
-            g.val_step(cond_inp, qdot)
+            g.val_step(o, u)
 
         # log evaluation
         write_val_progress_to_logs(test_summary_writer, g, epoch)
@@ -93,47 +101,52 @@ def main(args):
         )
     
 
+
     model_dir = get_model_dir(args)
     
     model_name = 'SCL'
+    print(f'saving model to {model_dir}/{model_name}')
     g.h.net.save(f'{model_dir}/{model_name}')
 
+    # to test if we get consistent results after loading model
     test_loading = True
     if test_loading:
         train_ds, val_ds = get_dsets(args, 1)
         for sample in val_ds.take(1):
             
-            q = sample['q']
-            cond_inp = tf.cast(tf.concat((sample['x'],q),1),dtype=tf.float32)
-            qdot = sample['q_dot']
-            qdot = tf.cast(qdot,dtype=tf.float32)
+            o = get_cond_inp(sample, u_dim, args.goal_cond, args.legacy)       # observation
+            u = tf.cast(sample['q_dot'],dtype=tf.float32)  # actuation
 
-            SCL_map = g._get_map(cond_inp)
-            a_star = g._get_best_action(SCL_map, qdot)
-            qdot_hat = tf.matmul(SCL_map, a_star)
-            error = tf.expand_dims(qdot,-1)-qdot_hat
+            SCL_basis = g._get_map(o)
+            a_star = g._get_best_action(SCL_basis, u)
+            u_hat = tf.matmul(SCL_basis, a_star)
+            error = tf.expand_dims(u,-1)-u_hat
 
-            print('\nqdot\n', tf.expand_dims(qdot,-1))
-            print('\nSCL map\n', SCL_map)
+            print('\nu\n', tf.expand_dims(u,-1))
+            print('\nnorm of u\n', tf.norm(u))
+            print('\nSCL basis\n', SCL_basis)
             print('\na*\n', a_star)
-            print('\nqdot_hat\n', qdot_hat)
+            print('\nnorm of a*\n', tf.norm(a_star))
+            print('\nu_hat\n', u_hat)
             print('\nerror\n', error)
             print('\nerror norm\n', tf.norm(error, axis=1))
 
 
-        loaded_SCL = SCL(action_dim=args.action_dim, output_dim=out_dim, cond_dim=cond_dim, lip_coeff=args.lip_coeff, action_pred=args.action_pred)
+        loaded_SCL = SCL(action_dim=args.action_dim, output_dim=u_dim, cond_dim=o_dim, lip_coeff=args.lip_coeff, action_pred=args.action_pred)
         loaded_h = keras.models.load_model(f'{model_dir}/{model_name}')
         loaded_SCL.h = loaded_h
         
-        SCL_map = loaded_SCL._get_map(cond_inp)
-        a_star = loaded_SCL._get_best_action(SCL_map, qdot)
-        qdot_hat = tf.matmul(SCL_map, a_star)
-        error = tf.expand_dims(qdot,-1)-qdot_hat
+        SCL_basis = loaded_SCL._get_map(o)
+        a_star = loaded_SCL._get_best_action(SCL_basis, u)
+        u_hat = tf.matmul(SCL_basis, a_star)
+        error = tf.expand_dims(u,-1)-u_hat
 
-        print('\nqdot\n', tf.expand_dims(qdot,-1))
-        print('\nSCL map\n', SCL_map)
+        print('\nu\n', tf.expand_dims(u,-1))
+        print('\nnorm of u\n', tf.norm(u))
+        print('\nSCL basis\n', SCL_basis)
         print('\na*\n', a_star)
-        print('\nqdot_hat\n', qdot_hat)
+        print('\nnorm of a*\n', tf.norm(a_star))
+        print('\nu_hat\n', u_hat)
         print('\nerror\n', error)
         print('\nerror norm\n', tf.norm(error, axis=1))
 

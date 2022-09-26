@@ -14,7 +14,6 @@ from tensorflow import keras
 from tensorflow.keras import layers
 import numpy as np
 from nht.utils import project_weights
-#tf.enable_eager_execution()
 import copy
 
 import json

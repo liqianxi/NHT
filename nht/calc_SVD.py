@@ -6,10 +6,14 @@ import dask.array as da
 
 
 def form_data_matrix(data_dict_list):
-    X = np.zeros((len(data_dict_list[0]['velocity']), len(data_dict_list)))
+    # X = np.zeros((len(data_dict_list[0]['velocity']), len(data_dict_list)))
+    # for i, data_pt in enumerate(data_dict_list):
+    #     X[:,i] = data_pt['velocity']
+
+    X = np.zeros((len(data_dict_list[0]['q_double_dot']), len(data_dict_list)))
     for i, data_pt in enumerate(data_dict_list):
-        X[:,i] = data_pt['velocity']
-    
+        X[:,i] = data_pt['q_double_dot']    
+
     return X
 
 
@@ -63,7 +67,8 @@ def main(args):
     SVD_dict = {'U': SVD_basis.tolist(), 'mu': mu.tolist(), 'bias': bias.tolist()}
     
     model_dir = get_local_model_dir(args)
-    model_name = f'SVD-{args.weight_savepath}-A{args.action_dim}.json'
+    model_name = f'SVD-{args.weight_savepath}-A{args.action_dim}-{n}.json'
+    print(f'{model_dir}/{model_name}')
     with open(f'{model_dir}/{model_name}','w+') as outfile:
         json.dump(SVD_dict, outfile)
 
