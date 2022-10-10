@@ -1,166 +1,135 @@
-# disable deprecation and future warnings from tf1
-import warnings
-
-warnings.simplefilter(action='ignore', category=FutureWarning)
-warnings.simplefilter(action='ignore', category=DeprecationWarning)
-
-
-import tensorflow as tf
-print("TensorFlow version:", tf.__version__)
-
-from tensorflow.keras.layers import Dense, Flatten, Conv2D
-from tensorflow.keras import Model
-from tensorflow import keras
-from tensorflow.keras import layers
 import numpy as np
-from nht.utils import project_weights
-import copy
+import torch
+import torch.nn as nn
+from latent_robotic_actions.models.networks import MLP, HypernetworkLinear
+from latent_robotic_actions.models.losses import get_mmd_loss, log_prob_gauss, norm_error
+import pytorch_lightning as pl
+from latent_robotic_actions.models.human_prior_losses import proportionality, consistency, reversibility
+from latent_robotic_actions.models.torch_kinematics import TorchKinovaKinematics, TorchPlanarFiveDOFKinematics
 
-import json
-import tensorflow as tf
-from nht.MLP import MLP
+
+class NHT(pl.LightningModule):
+    def __init__(self,  inputs=None,         # in CAE, inputs=['thetas','velocity'], for NHT there is no encoder (uses actuation projection instead)
+                        outputs=7,           # outputs=['velocity']
+                        z_dim=2,             # dimensionality of low-dim actions, k
+                        cond_dims = 7,       # cond_inp=['thetas']
+                        hiddens=[256, 256],
+                        act = 'tanh',
+                        lr=1e-4,
+                        ):
+
+        super().__init__()
+        self.save_hyperparameters()
 
 
+        # create the network to predict tangent vectors
+        #self.h = MLP(inputs= z_dim, outputs = outputs-1, hyper_inp=cond_dims, hiddens=hiddens, act=act)
+        self.n = outputs
+        self.k = z_dim
 
-class NHT(keras.Model):
-    def __init__(self, action_dim, output_dim, cond_dim, lip_coeff=1, step_size = 0.0001, hiddens=[256,256], activation='tanh', use_exp=True, action_pred=False):
-        super(NHT, self).__init__()
+        # create the network to predice householder vectors
+        self.decoder = MLP(inputs = cond_dims, hiddens=hiddens, out = (self.n-1)*self.k, activation=act, expmap=True, k=self.k)
 
-        self.L = lip_coeff
-        self.step_size = step_size
-        self.action_pred = action_pred
+        self.lr = lr
 
-        self.action_dim = action_dim
-        self.output_dim = output_dim
-        self.use_exp = use_exp
+        self.I_k_Zero_block = None
         
-        # correct for 2*sqrt(k) Lipschitz coefficient of Householder tranform
-        k = self.action_dim
-        layers = len(hiddens) + 1
-        self.L_NN = self.L/(2*np.sqrt(k))
-        self.L_layer = np.power(self.L_NN, 1/layers)
-
-        if self.use_exp:
-            self.h = MLP(cond_dim, hiddens, action_dim*(output_dim-1), activation)
-        else:
-            self.h = MLP(cond_dim, hiddens, action_dim*output_dim, activation)
-            
-        if action_pred:
-            self.f = MLP(output_dim+cond_dim,hiddens,action_dim, activation) # encoder, predicts low dim action given state and high dim action
-
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.step_size)
-        
-        self.train_loss = tf.contrib.eager.metrics.Mean(name='train_recon_loss')
-        self.val_loss = tf.contrib.eager.metrics.Mean(name='val_recon_loss')
     
-    def freeze_model(self):
-        for layer in self.h.net.layers:
-            layer.get_config()
-            layer.trainable = False
-        self.h.freeze()
 
-    def _exp_map(self,H):
-        epsilon = 1e-6
-        # H.shape: batch x n-1 x k
-        n_minus_1 = int(H.shape[-2])
-        zero_row = tf.zeros((1,n_minus_1))        # 1 x n-1
-        I = tf.eye(n_minus_1)                     # n-1 x n-1
-        zero_I = tf.concat((zero_row, I), axis=0) # n x n-1
-
-        v_mat = tf.matmul(zero_I, H)                  # batch x n x k
-        v_norm_vec = tf.linalg.norm(v_mat,axis=1)     # batch x k
-        v_norm_row_vec = tf.expand_dims(v_norm_vec,1) # batch x 1 x k
-        v_norm_diag = tf.linalg.diag(v_norm_vec)      # batch x k x k
-        inv_v_norm_diag = tf.linalg.diag(1/(v_norm_vec+epsilon))
-        sin_over_norm = tf.linalg.matmul(tf.math.sin(v_norm_diag),inv_v_norm_diag) # batch x k x k
-
-        e1 = tf.eye(n_minus_1+1,1) # n x 1
-        
-        cos_term = tf.linalg.matmul(e1, tf.math.cos(v_norm_row_vec))
-        sin_term = tf.linalg.matmul(v_mat, sin_over_norm)
-        
-        exp_mapped_vs = cos_term+sin_term
-        
-        return exp_mapped_vs
-        
-
-    
-    def _householder(self, H):
-        # Note, we assume the columns of H already have unit length, 
+    def householder(self, V):
+        # Note, we assume the columns of V already have unit length, 
         # thanks to the exponential map to the unit sphere
-        k = H.shape[-1] # number of vectors from which to construct reflections
-        Q = tf.eye(int(H.shape[-2]))
-        I = tf.eye(int(H.shape[-2]))
-        
-        for c in range(k):
-            v = tf.expand_dims(H[:,:,c],-1) # batch x n x 1
-            vT = tf.transpose(v,(0,2,1))    # batch x 1 x n
-            vvT = tf.matmul(v,vT)           # batch x n x n
-            H_i =  I - 2*vvT                # batch x n x n
-            Q = tf.matmul(Q, H_i)   # batch x n x n
-
-        return Q[:,:,:k] # H_hat
-
-
-    def _get_map(self, inputs):
-        x = self.h(inputs)
-        if self.use_exp:
-            v_bar = tf.reshape(x, [-1, self.output_dim-1, self.action_dim])
-            v_hat_bar = self._exp_map(v_bar)
-        else:
-            v_hat_bar = tf.reshape(x, [-1, self.output_dim, self.action_dim])
-            
-        Q = self._householder(v_hat_bar)
-        
-        return Q
+        n = V.shape[-2]
+        k = V.shape[-1] # number of vectors from which to construct reflections
     
-    def _get_best_action(self, SCL_map, low_level_action):
-        SCL_map_pinv = tf.transpose(SCL_map,perm=[0,2,1]) # assumes SCL_map is orthonormal
-        low_level_action = tf.expand_dims(low_level_action,-1)
-        least_square_sol = tf.matmul(SCL_map_pinv,low_level_action)
+        I = torch.eye(n).type_as(V)
+        Q = I            # start with Q = I and keep reflecting
 
-        return least_square_sol
+        for c in range(k):
+            v = V[:,:,c].unsqueeze(-1)          # batch x n x 1
+            vT = torch.transpose(v,1,2)         # batch x 1 x n
+            vvT = torch.linalg.matmul(v,vT)     # batch x n x n
+            H =  I - 2*vvT                      # batch x n x n
+            Q = torch.linalg.matmul(Q, H)       # batch x n x n
 
+        return Q 
 
-    def train_step(self, cond_inp, qdot):
-        with tf.GradientTape() as tape:
-            qdot_hat = self.call(cond_inp, qdot)
-            qdot = tf.expand_dims(qdot,-1)
-            loss = tf.math.reduce_mean(tf.norm(qdot-qdot_hat, axis=1))
+    def get_map(self, obs):
 
+        V = self.decoder(obs)
+        Q = self.householder(V)
+        Q_hat = torch.linalg.matmul(Q, self.get_I_k_Zero_block())
 
-        gradients = tape.gradient(loss, self.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        return Q_hat
+
+    def decode(self, z, cond_inpt):
+        '''
+        Gives output (qdot) given conditional input and action
+        '''
+        Q_hat = self.get_map(cond_inpt)
+        a = z.unsqueeze(-1)
         
-        if self.L is not None: # Lipschitz Regularization
-            #project_weights(self.f, self.L)
-            project_weights(self.h, self.L_layer)
+        qdot = torch.linalg.matmul(Q_hat,a)
         
-        self.train_loss(loss)
+        return qdot.squeeze()
 
 
-    def val_step(self, cond_inp, qdot):
-        qdot_hat = self.call(cond_inp, qdot)
-        qdot = tf.expand_dims(qdot,-1)
-        loss = tf.math.reduce_mean(tf.norm(qdot-qdot_hat, axis=1))
+    def forward(self, qdot, cond_inp = None):
+        '''
+        Gives qdot_hat and corresponding low dimenional action
+        '''
 
-        self.val_loss(loss)
+        Q_hat = self.get_map(cond_inp)
+        qdot = qdot.unsqueeze(-1)  # make column vector for matrix vector multiplication
+        a_hat = torch.linalg.matmul(torch.transpose(Q_hat,1,2), qdot)
+        qdot_hat = torch.linalg.matmul(Q_hat, a_hat).squeeze()
 
-
-    def predict_action(self, low_level_action, cond_inp):
-        return self.f(tf.concat((low_level_action, cond_inp),axis=-1))
-
-    def call(self, cond_inp, low_level_action):
-        SCL_map = self._get_map(cond_inp)
-        if self.action_pred: # action prediction
-            a = self.predict_action(low_level_action, cond_inp)
-            q_dot_hat = tf.matmul(SCL_map, tf.expand_dims(a,-1))
-            
-        else: # action projection
-            a_star = self._get_best_action(SCL_map, low_level_action)
-            q_dot_hat = tf.matmul(SCL_map, a_star)
-
-        return q_dot_hat
+        return qdot_hat, a_hat
 
 
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
 
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor =0.99)
+        return {'optimizer': optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'monitor': 'train_loss'
+                    }
+                }
+
+
+    def training_step(self, train_batch, batch_idx):
+        #TODO: inputs should really be formed by [conditionals, outputs], not separate value by itself
+        input, qdot, obs = train_batch
+
+        qdot_hat, a_hat = self.forward(qdot, cond_inp=obs)
+
+        loss = log_prob_gauss(qdot_hat, qdot, torch.ones_like(qdot))
+
+        self.log('train_loss', loss)
+
+        return loss
+
+
+    def validation_step(self, val_batch, batch_idx):
+        input, qdot, obs  = val_batch
+
+        qdot_hat, a_hat = self.forward(qdot, cond_inp=obs)
+
+        loss = log_prob_gauss(qdot_hat, qdot, torch.ones_like(qdot))
+
+        self.log('val_loss', loss)
+        return loss
+
+    def get_I_k_Zero_block(self):
+        # work around to get constant matrix on gpu
+        if self.I_k_Zero_block is not None:
+            return self.I_k_Zero_block
+
+        # form block matrix to select first k columns of Q
+        I_k = torch.eye(self.k, device=self.device)
+        Zero = torch.zeros(self.n-self.k, self.k, device=self.device)
+        self.I_k_Zero_block = torch.concat((I_k,Zero), axis=0)
+        return self.I_k_Zero_block
+    
