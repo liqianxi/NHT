@@ -69,6 +69,82 @@ def common_arg_parser():
   return parser
 
 
+import json
+from torch.utils.data import Dataset
+import torch
+
+class ActionInterfaceDataset(Dataset):
+  def __init__(self, data_dict = None, context='observations'):
+    
+    self.examples = []
+    
+    for action, obs in zip(data_dict['actions'], data_dict[context]):
+      self.examples.append(dict(u = torch.tensor(action), context = torch.tensor(obs)))
+
+  def __len__(self):
+    return len(self.examples)
+
+  def __getitem__(self, idx):
+    example = self.examples[idx]
+    return example['u'], example['context']
+
+import random
+
+def split_dset(data_dict, context, val_prop):
+  N = len(data_dict['actions'])
+  N_val = int(val_prop*N)
+  N_train = N-N_val
+
+  indices = [*range(N)]
+  random.shuffle(indices)
+  
+  train_indices = indices[:N_train]
+  val_indices = indices[N_train:]
+
+  assert len(val_indices) == N_val
+
+  train_actions = data_dict['actions'][train_indices]
+  train_context = data_dict[context][train_indices]
+
+  train_data_dict = {'actions': train_actions, context: train_context}
+
+  val_actions = data_dict['actions'][val_indices]
+  val_context = data_dict[context][val_indices]
+
+  val_data_dict = {'actions': val_actions, context: val_context}
+
+  return train_data_dict, val_data_dict
+
+
+from nht.models.NHT import NHT
+def get_model(args, u_dim, a_dim, c_dim, hiddens, activation, lr, L, multihead, model):
+    
+    if model == 'NHT':
+      return NHT(u_dim=u_dim, a_dim=a_dim, c_dim=c_dim, hiddens=hiddens, act=activation, L=L, multihead=multihead, lr=lr)
+
+def load_model(model):
+    if model == 'NHT':
+      return NHT
+
+import glob
+import yaml
+
+def load_interface(model_type, model_path):
+
+    folder = f'{model_path}/checkpoints/'
+    print(folder)
+    models = glob.glob(folder + '/*.ckpt')
+    print(models)
+    
+    best = sorted(models, key= lambda x: float(x.split('val_loss=')[1].split('.ckpt')[0]), reverse=False)[0]
+    with open(folder + 'args.yaml', 'r') as f:
+        exp_args = yaml.safe_load(f)
+    print(exp_args['model'])
+
+    model = load_model(model_type).load_from_checkpoint(checkpoint_path=best)
+        
+    print(model)
+    return model
 
 def kl_divergence(mu, sigma, target_sigma=1.0):
     var = tf.math.pow(sigma, 2)
