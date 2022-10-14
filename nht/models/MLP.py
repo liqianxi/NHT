@@ -46,7 +46,6 @@ class MultiHeadMLP2(nn.Module):
             shared_layers = shared_layers + [nn.Linear(in_d, out_d)]
             shared_layers = shared_layers + [activation()]
             
-        #self.heads = nn.ModuleList([nn.Linear(hiddens[-1], out)]*k)
         sub_MLPs = []
         for i in range(k):
             sub_MLP_layers = [nn.Linear(hiddens[-1], hiddens[-1]), activation(),nn.Linear(hiddens[-1], out)]
@@ -58,8 +57,6 @@ class MultiHeadMLP2(nn.Module):
             self.expmap = ExpMap_sphere()
         else:
             self.expmap = None
-        # if expmap:
-        #     layers = layers + [ExpMap_sphere(k)]
             
         self.net = nn.Sequential(*shared_layers)
 
@@ -96,15 +93,12 @@ class MultiHeadMLP(nn.Module):
             shared_layers = shared_layers + [nn.Linear(in_d, out_d)]
             shared_layers = shared_layers + [activation()]
             
-        #self.heads = nn.ModuleList([nn.Linear(hiddens[-1], out)]*k)
         self.heads = nn.ModuleList([nn.Linear(hiddens[-1], out) for i in range(k)])
 
         if expmap:
             self.expmap = ExpMap_sphere()
         else:
             self.expmap = None
-        # if expmap:
-        #     layers = layers + [ExpMap_sphere(k)]
             
         self.net = nn.Sequential(*shared_layers)
 
