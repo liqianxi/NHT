@@ -146,17 +146,17 @@ import yaml
 def load_interface(model_type, model_path):
 
     folder = f'{model_path}/checkpoints/'
-    print(folder)
+    #print(folder)
     models = glob.glob(folder + '/*.ckpt')
-    print(models)
+    #print(models)
     
     best = sorted(models, key= lambda x: float(x.split('val_loss=')[1].split('.ckpt')[0]), reverse=False)[0]
     with open(folder + 'args.yaml', 'r') as f:
         exp_args = yaml.safe_load(f)
-    print(exp_args['model'])
+    #print(exp_args['model'])
 
     model = load_model(model_type).load_from_checkpoint(checkpoint_path=best)
         
-    print(model)
+    #print(model)
 
     return model

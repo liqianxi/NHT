@@ -30,7 +30,6 @@ def create_NHT_env(base_env, NHT_path):
     class MuJoCoInterfaceEnv(env_class, gym_utils.EzPickle):
         def __init__(self,):# env_config):
 
-            print(env_class)
             # load NHT model by reading path from config.yaml
             model_path = NHT_path
             model_type = 'NHT'

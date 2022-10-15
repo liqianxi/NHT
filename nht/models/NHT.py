@@ -23,7 +23,6 @@ class NHT(pl.LightningModule):
         self.n = u_dim
         self.k = a_dim
 
-        print(f'multihead: {multihead}')
         # create the network to predice householder vectors
         if multihead:
             self.h = MultiHeadMLP(inputs = c_dim, hiddens=hiddens, out = (self.n-1), activation=act, expmap=True, k=self.k)
