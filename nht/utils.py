@@ -33,7 +33,9 @@ def action_map_arg_parser():
 
   # if using dataset from D4RL
   parser.add_argument("--d4rl_dset", default=None)
-  parser.add_argument("--val_prop", default=0.15, help="proportion of dataset to use as validation")
+  parser.add_argument("--dataset_prop", type=lambda x: try_float(x), default=1.0, help="proportion of overall dataset to use")
+  parser.add_argument("--dataset_transitions", type=int, default=None, help="number of transitions of dataset to use")
+  parser.add_argument("--val_prop", type=lambda x: try_float(x), default=0.15, help="proportion of used dataset to be validation")
 
   # if using custom dataset
   parser.add_argument("--train_pth", default=None,
@@ -77,7 +79,9 @@ def get_dsets(args):
   if args.d4rl_dset is not None:
     env = gym.make(args.d4rl_dset)
     data_dict = env.get_dataset()
-    train_data_dict, val_data_dict = split_dset(data_dict, context=args.context, val_prop=args.val_prop)
+    train_data_dict, val_data_dict = split_dset(data_dict, prop=args.dataset_prop, transitions=args.dataset_transitions, context=args.context, val_prop=args.val_prop)
+  else:
+    raise NotImplementedError
 
   #create datasets
   train_dataset = ActionInterfaceDataset(train_data_dict, context=args.context)
@@ -104,14 +108,24 @@ class ActionInterfaceDataset(Dataset):
     return example['u'], example['context']
 
 
-def split_dset(data_dict, context, val_prop):
+def split_dset(data_dict, prop, transitions, context, val_prop):
+
   N = len(data_dict['actions'])
-  N_val = int(val_prop*N)
-  N_train = N-N_val
+
 
   indices = [*range(N)]
   random.shuffle(indices)
   
+  if transitions is not None:
+    N = transitions
+  else:
+    N = int(N*prop)
+  
+  indices = indices[:N] # take first N indices
+
+  N_val = int(val_prop*N)
+  N_train = N-N_val
+
   train_indices = indices[:N_train]
   val_indices = indices[N_train:]
 
