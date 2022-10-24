@@ -12,7 +12,7 @@ setup(name='nht',
       packages=[package for package in find_packages()
                 if package.startswith('nht')],
       install_requires=[
-          'torch',
+          'pytorch-lightning',
       ],
       extras_require=None,
       description='Neural Householder Transforms',

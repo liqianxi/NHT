@@ -8,6 +8,7 @@ NHT_path = '.results/walker/20_multihead/version_0'
 env = 'Walker2d-v2'
 
 NHT_env_name = register_rllib_env(env, NHT_path)
+print('loaded NHT env')
 
 # Configure the algorithm.
 config = {
