@@ -74,6 +74,52 @@ def action_map_arg_parser():
 
   return parser
 
+import numpy as np
+from tqdm import tqdm
+import pickle
+import pathlib
+def project_d4rl_actions(NHT_path, d4rl_dset, prop=1.0, attempt_load=True):
+
+  env = gym.make(d4rl_dset)
+  data_dict = env.get_dataset()
+  N_examples = int(len(data_dict['actions'])*prop)
+
+  if attempt_load:
+    try:
+      with open(f"./.datasets/{d4rl_dset}_projected.pickle","rb") as f:
+        data_dict = pickle.load(f)
+
+      assert len(data_dict['actions']) == N_examples
+      return data_dict
+    except:
+      print("Projecting data...")
+
+  Q_func = load_interface('NHT', model_path = NHT_path)
+
+  print(f"Total training examples: {N_examples}")
+
+  projected_actions = np.zeros((N_examples,2))
+  
+  for idx in tqdm(range(N_examples)):
+    # if idx % 1000 == 0:
+    #   print(idx)
+    u = torch.from_numpy(data_dict['actions'][idx]).unsqueeze(0)
+    c = torch.from_numpy(data_dict['observations'][idx]).unsqueeze(0)
+    Q_hat = Q_func(c)
+    a_hat = torch.linalg.matmul(torch.transpose(Q_hat,1,2), u.unsqueeze(-1)) # projection
+    projected_actions[idx] = a_hat.squeeze().detach().numpy()
+  
+  data_dict['actions'] = projected_actions
+
+  # make dir if it doesn't exist
+  data_dir = pathlib.Path("./.datasets")
+  data_dir.mkdir(exist_ok=True)
+
+  # save data
+  with open(f"./.datasets/{d4rl_dset}_projected.pickle","wb") as f:
+    pickle.dump(data_dict, f)
+  
+  return data_dict
 
 def get_dsets(args):
   if args.d4rl_dset is not None:
