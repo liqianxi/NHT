@@ -1,4 +1,4 @@
-from NHT_envs.MuJoCo_Interface import register_NHT_env
+from nht.mujoco_interface import register_NHT_env
 import gym
 
 NHT_path = '.results/walker/20_multihead/version_0'

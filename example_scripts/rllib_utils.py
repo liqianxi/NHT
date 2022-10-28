@@ -4,7 +4,7 @@ import tempfile
 from ray.tune.logger import Logger, UnifiedLogger
 import gym
 from ray.tune.registry import register_env
-from NHT_envs.MuJoCo_Interface import register_NHT_env
+from nht.mujoco_interface import register_NHT_env
 import gym
 
 def register_rllib_env(env, NHT_path):
