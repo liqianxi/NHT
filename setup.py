@@ -13,6 +13,8 @@ setup(name='nht',
                 if package.startswith('nht')],
       install_requires=[
           'pytorch-lightning',
+          'gym'
+          #d4rl
       ],
       extras_require=None,
       description='Neural Householder Transforms',
